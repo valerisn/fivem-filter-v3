@@ -38,3 +38,7 @@ jobs:
         run: |
           make build/tests/test_xdp
           sudo build/tests/test_xdp build/filter.bpf.o
+      - name: end to end
+        run: |
+          sudo apt-get install -y -qq jq
+          sudo tests/e2e.sh

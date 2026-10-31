@@ -104,6 +104,13 @@ struct ff_config {
 	__u32 global_syn_pps;		/* box-wide ceilings; 0 = off */
 	__u32 global_oob_pps;
 	__u32 log_sample;		/* 1 event per N drops; 0 = off */
+	/*
+	 * The global ceilings are per-CPU buckets that each get pps / nr_cpus.
+	 * v2 used one spin-locked bucket, i.e. every core fighting over one
+	 * cacheline during exactly the SYN flood it exists to absorb.
+	 */
+	__u32 nr_cpus;
+	__u32 pad32_;
 
 	/* 16-bit */
 	__u16 port_lo;			/* inclusive game port range, host order */

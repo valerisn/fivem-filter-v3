@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <net/if.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -323,11 +324,19 @@ int cmd_reload(int argc, char **argv)
 	}
 	if (!conf && !access(FF_DEFAULT_CONF, R_OK))
 		conf = FF_DEFAULT_CONF;
+	/*
+	 * Rebuilding from defaults with no file would quietly reset --ip to
+	 * "any" on a live box. First draft did exactly that. Live tweaks
+	 * without a file are what `fivemctl config` is for.
+	 */
+	if (!conf)
+		die("nothing to reload from: no --config and no %s. "
+		    "For live changes use `fivemctl config --name value`.",
+		    FF_DEFAULT_CONF);
 
 	config_read(&live);
 	config_defaults(&cfg);
-	if (conf)
-		conf_load(conf, &cfg, &lo);
+	conf_load(conf, &cfg, &lo);
 	if (parse_tunable_args(nrest, rest, &cfg, &lo, NULL))
 		die("unexpected argument '%s'", rest[1]);
 	free(rest);

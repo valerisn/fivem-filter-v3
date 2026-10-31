@@ -107,6 +107,7 @@ install: all
 	install -m 0644 systemd/fivem-filter.service $(DESTDIR)$(UNITDIR)/
 	install -m 0644 systemd/fivem-filter-reap.service $(DESTDIR)$(UNITDIR)/
 	install -m 0644 systemd/fivem-filter-reap.timer $(DESTDIR)$(UNITDIR)/
+	install -m 0644 systemd/fivem-filter-exporter.service $(DESTDIR)$(UNITDIR)/
 	@# never stomp an existing config, people tune these by hand
 	@if [ ! -e $(DESTDIR)$(SYSCONFDIR)/fivem-filter.conf ]; then \
 		install -D -m 0644 packaging/fivem-filter.conf \
@@ -119,6 +120,7 @@ uninstall:
 	rm -f $(DESTDIR)$(UNITDIR)/fivem-filter.service
 	rm -f $(DESTDIR)$(UNITDIR)/fivem-filter-reap.service
 	rm -f $(DESTDIR)$(UNITDIR)/fivem-filter-reap.timer
+	rm -f $(DESTDIR)$(UNITDIR)/fivem-filter-exporter.service
 
 dist: all
 	@rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/fivem-filter-$(VERSION)

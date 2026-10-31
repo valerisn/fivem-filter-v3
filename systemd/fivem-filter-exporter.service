@@ -6,7 +6,6 @@ After=fivem-filter.service
 ExecStart=/usr/local/bin/fivemctl exporter --listen 127.0.0.1:9273
 Restart=always
 RestartSec=5
-DynamicUser=yes
 AmbientCapabilities=CAP_BPF
 CapabilityBoundingSet=CAP_BPF
 NoNewPrivileges=yes

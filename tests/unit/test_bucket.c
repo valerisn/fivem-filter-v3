@@ -28,11 +28,25 @@ int main(void)
 	CHECK(!ff_tb_take(&stamp, &tok, t + 101 * MS, 100 * MS, 10), "double refill");
 
 	/*
-	 * The remainder leak. Packets every 150ms against a 100ms refill should
-	 * pass every time in steady state (1.5 tokens per gap). v2 converted 1
-	 * token and dropped the extra 50ms on every packet, so it only ever
-	 * passed 2 out of 3.
+	 * The remainder leak. Drained bucket with headroom (burst 10), packets
+	 * every 90ms against a 100ms refill: 90 tokens get minted over 9s, so
+	 * exactly 90 of 100 should pass. v2 threw away the leftover 80ms each
+	 * time it converted a token and only passed every other packet - 50%,
+	 * on a source sending *under* the configured rate.
+	 *
+	 * (burst 1 would legitimately give 50% here - excess past a full bucket
+	 * is supposed to be lost. Took me a minute to stop "fixing" that.)
 	 */
+	stamp = 0; tok = 0;
+	t = 9000 * MS;
+	while (ff_tb_take(&stamp, &tok, t, 100 * MS, 10))
+		;
+	n = 0;
+	for (int i = 1; i <= 100; i++)
+		n += ff_tb_take(&stamp, &tok, t + (__u64)i * 90 * MS, 100 * MS, 10);
+	CHECK(n == 90, "90ms spacing vs 100ms refill: %d/100 passed, want 90", n);
+
+	/* Under the rate with burst 1 still passes everything. */
 	stamp = 0; tok = 0;
 	t = 5000 * MS;
 	while (ff_tb_take(&stamp, &tok, t, 100 * MS, 1))
@@ -41,16 +55,6 @@ int main(void)
 	for (int i = 1; i <= 30; i++)
 		n += ff_tb_take(&stamp, &tok, t + (__u64)i * 150 * MS, 100 * MS, 1);
 	CHECK(n == 30, "150ms spacing vs 100ms refill: %d/30 passed", n);
-
-	/* And at 1 per 90ms against 100ms we must drop roughly 1 in 10. */
-	stamp = 0; tok = 0;
-	t = 9000 * MS;
-	while (ff_tb_take(&stamp, &tok, t, 100 * MS, 1))
-		;
-	n = 0;
-	for (int i = 1; i <= 100; i++)
-		n += ff_tb_take(&stamp, &tok, t + (__u64)i * 90 * MS, 100 * MS, 1);
-	CHECK(n == 90, "90ms spacing vs 100ms refill: %d/100 passed, want 90", n);
 
 	/* Long idle: years of elapsed time must clamp, not wrap. */
 	stamp = 1; tok = 0;

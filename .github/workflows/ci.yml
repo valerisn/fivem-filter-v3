@@ -30,7 +30,5 @@ jobs:
             linux-tools-common linux-tools-$(uname -r)
       - name: build bpf object
         run: make bpf
-      # GitHub's runners give us passwordless sudo and a 6.x kernel, which
-      # is the only verifier this project ever sees before a user's box does
       - name: verifier
         run: sudo make verify

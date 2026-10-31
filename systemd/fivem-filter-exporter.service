@@ -1,0 +1,18 @@
+[Unit]
+Description=fivem-filter Prometheus exporter
+After=fivem-filter.service
+
+[Service]
+ExecStart=/usr/local/bin/fivemctl exporter --listen 127.0.0.1:9273
+Restart=always
+RestartSec=5
+DynamicUser=yes
+AmbientCapabilities=CAP_BPF
+CapabilityBoundingSet=CAP_BPF
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Remove expired fivem-filter rules
+After=fivem-filter.service
+Requisite=fivem-filter.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fivemctl reap --quiet
+AmbientCapabilities=CAP_BPF
+CapabilityBoundingSet=CAP_BPF
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes

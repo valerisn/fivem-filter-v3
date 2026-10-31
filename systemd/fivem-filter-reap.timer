@@ -1,0 +1,10 @@
+[Unit]
+Description=Reap expired fivem-filter rules every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,28 @@
+[Unit]
+Description=fivem-filter XDP packet filter
+Documentation=https://github.com/valerisn/fivem-filter-v3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/fivemctl load --config /etc/fivem-filter.conf
+# bans live in the kernel; this is what makes them survive a reboot
+ExecStartPost=/usr/local/bin/fivemctl restore /var/lib/fivem-filter/rules
+ExecReload=/usr/local/bin/fivemctl reload --config /etc/fivem-filter.conf
+ExecStop=-/usr/local/bin/fivemctl save /var/lib/fivem-filter/rules
+ExecStop=/usr/local/bin/fivemctl unload
+StateDirectory=fivem-filter
+RuntimeDirectory=fivem-filter
+
+AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_PERFMON
+CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_PERFMON
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/sys/fs/bpf
+
+[Install]
+WantedBy=multi-user.target

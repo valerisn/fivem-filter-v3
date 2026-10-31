@@ -35,8 +35,8 @@
 #include "policy.h"
 #include "l4.h"
 
-static __always_inline __u32 ff_decide(struct ff_config *cfg, struct ff_pkt *pkt,
-				       struct ff_l3 *l3, void *data_end, __u64 now)
+static __always_inline __u32 ff_decide(struct xdp_md *ctx, struct ff_config *cfg,
+				       struct ff_pkt *pkt, struct ff_l3 *l3, __u64 now)
 {
 	__u32 r;
 
@@ -72,12 +72,12 @@ static __always_inline __u32 ff_decide(struct ff_config *cfg, struct ff_pkt *pkt
 
 	switch (l3->proto) {
 	case IPPROTO_UDP:
-		return ff_udp(cfg, pkt, l3, data_end, now);
+		return ff_udp(ctx, cfg, pkt, l3, now);
 	case IPPROTO_TCP:
-		return ff_tcp(cfg, pkt, l3, data_end, now);
+		return ff_tcp(ctx, cfg, pkt, l3, now);
 	case IPPROTO_ICMP:
 	case IPPROTO_ICMPV6:
-		return ff_icmp(cfg, pkt, l3, data_end, now);
+		return ff_icmp(ctx, cfg, pkt, l3, now);
 	}
 
 	/* GRE, ESP, SCTP, whatever: aimed at us but not a game port. The
@@ -88,8 +88,6 @@ static __always_inline __u32 ff_decide(struct ff_config *cfg, struct ff_pkt *pkt
 SEC("xdp")
 int fivem_filter(struct xdp_md *ctx)
 {
-	void *data = (void *)(long)ctx->data;
-	void *data_end = (void *)(long)ctx->data_end;
 	struct ff_pkt pkt = {};
 	struct ff_l3 l3 = {};
 	struct ff_config *cfg;
@@ -101,7 +99,7 @@ int fivem_filter(struct xdp_md *ctx)
 	if (!cfg || !(cfg->flags & FF_F_ENABLED))
 		return XDP_PASS;
 
-	rc = ff_parse(data, data_end, &pkt, &l3);
+	rc = ff_parse(ctx, &pkt, &l3);
 	if (rc > 0)
 		return XDP_PASS;	/* ARP and friends, not even counted */
 	if (rc < 0)
@@ -110,7 +108,7 @@ int fivem_filter(struct xdp_md *ctx)
 	pkt.len = (__u16)l3.iplen;
 	now = bpf_ktime_get_ns();
 
-	reason = ff_decide(cfg, &pkt, &l3, data_end, now);
+	reason = ff_decide(ctx, cfg, &pkt, &l3, now);
 
 	if (l3.frag && l3.frag_first)
 		ff_frag_remember(cfg, &pkt, &l3, reason, now);

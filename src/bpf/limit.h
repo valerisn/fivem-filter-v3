@@ -35,15 +35,19 @@ static __always_inline __u32 ff_hash(const struct ff_addr *a, __u32 seed)
  * No helper calls while the lock is held - the verifier will (rightly) refuse.
  * ff_tb_take is pure arithmetic and inlined, so it's fine in here.
  */
-static __always_inline __u32 ff_source_check(struct ff_config *cfg,
-					     const struct ff_addr *key,
-					     __u64 now, __u32 checks)
+FF_SUBPROG __u32 ff_source_check(struct ff_config *cfg, const struct ff_addr *key,
+				 __u64 now, __u32 checks)
 {
-	__u32 idx = ff_hash(key, cfg->hash_seed) & FF_STATE_MASK;
-	/* |1 so a zeroed (never used) slot can never match */
-	__u32 tag = ff_hash(key, cfg->hash_seed ^ 0x5bf03635u) | 1u;
 	__u32 reason = FF_STAT_PASS;
 	struct ff_state *s;
+	__u32 idx, tag;
+
+	if (!cfg || !key)
+		return FF_STAT_PASS;
+
+	idx = ff_hash(key, cfg->hash_seed) & FF_STATE_MASK;
+	/* |1 so a zeroed (never used) slot can never match */
+	tag = ff_hash(key, cfg->hash_seed ^ 0x5bf03635u) | 1u;
 
 	s = bpf_map_lookup_elem(&state, &idx);
 	if (!s)

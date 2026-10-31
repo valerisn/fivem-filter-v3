@@ -19,13 +19,17 @@ struct ff_v6_frag {
  * other way round: frames under 60 bytes arrive padded, so data_end lies
  * about where the datagram stops.
  */
-static __always_inline int ff_parse(void *data, void *data_end,
-				    struct ff_pkt *pkt, struct ff_l3 *l3)
+FF_SUBPROG int ff_parse(struct xdp_md *ctx, struct ff_pkt *pkt, struct ff_l3 *l3)
 {
+	void *data = (void *)(long)ctx->data;
+	void *data_end = (void *)(long)ctx->data_end;
 	struct ethhdr *eth = data;
 	void *cur = (void *)(eth + 1);
+	void *end;
 	__u16 proto;
 
+	if (!pkt || !l3)
+		return -1;
 	if (cur > data_end)
 		return -1;
 	proto = eth->h_proto;
@@ -59,9 +63,10 @@ static __always_inline int ff_parse(void *data, void *data_end,
 			return -1;
 
 		l3->iplen = tot;
-		l3->end = cur + tot;
-		if (l3->end > data_end)
-			l3->end = data_end;
+		end = cur + tot;
+		if (end > data_end)
+			end = data_end;
+		l3->end_off = (__u16)(end - data);
 
 		pkt->af = FF_AF_INET;
 		pkt->src[0] = ip->saddr;
@@ -76,7 +81,7 @@ static __always_inline int ff_parse(void *data, void *data_end,
 		l3->frag_first = (fo & 0x2000) && !(fo & 0x1fff);
 		l3->frag_id = bpf_ntohs(ip->id);
 		l3->proto = ip->protocol;
-		l3->l4 = cur + hlen;
+		l3->l4_off = (__u16)(cur + hlen - data);
 		return 0;
 	}
 
@@ -90,9 +95,10 @@ static __always_inline int ff_parse(void *data, void *data_end,
 
 		tot = sizeof(*ip6) + bpf_ntohs(ip6->payload_len);
 		l3->iplen = tot;
-		l3->end = cur + tot;
-		if (l3->end > data_end)
-			l3->end = data_end;
+		end = cur + tot;
+		if (end > data_end)
+			end = data_end;
+		l3->end_off = (__u16)(end - data);
 
 		pkt->af = FF_AF_INET6;
 		__builtin_memcpy(pkt->src, &ip6->saddr, 16);
@@ -120,7 +126,7 @@ static __always_inline int ff_parse(void *data, void *data_end,
 				if ((void *)(fh + 1) > data_end)
 					return -1;
 				off = bpf_ntohs(fh->frag_off);
-				l3->frag = true;
+				l3->frag = 1;
 				l3->frag_first = !(off & 0xfff8);
 				l3->frag_id = bpf_ntohl(fh->identification);
 				nexthdr = fh->nexthdr;
@@ -144,12 +150,16 @@ static __always_inline int ff_parse(void *data, void *data_end,
 			cur += (oh->hdrlen + 1) * 8;
 			if (cur > data_end)
 				return -1;
-			l3->has_opts = true;
+			l3->has_opts = 1;
 		}
+
+		/* 500 bytes of extension headers is not a game client */
+		if (cur - data > FF_MAX_L4_OFF)
+			return -1;
 
 		pkt->proto = nexthdr;
 		l3->proto = nexthdr;
-		l3->l4 = cur;
+		l3->l4_off = (__u16)(cur - data);
 		return 0;
 	}
 

@@ -55,6 +55,29 @@ static __always_inline __u32 ff_game_port_gate(struct ff_config *cfg,
 	return FF_NO_VERDICT;
 }
 
+/*
+ * Transport header pointer from ctx + offset. The mask is for the verifier,
+ * which can't see through the struct that l4_off came from; the parser
+ * already rejected anything past FF_MAX_L4_OFF.
+ */
+static __always_inline void *ff_l4(struct xdp_md *ctx, const struct ff_l3 *l3)
+{
+	void *data = (void *)(long)ctx->data;
+	__u32 off = l3->l4_off;
+
+	if (off > FF_MAX_L4_OFF)
+		return NULL;
+	return data + off;
+}
+
+/* Bytes between the end of an L4 header and the end of the datagram. */
+static __always_inline __u32 ff_payload_len(const struct ff_l3 *l3, __u32 hdr)
+{
+	__u32 start = (__u32)l3->l4_off + hdr;
+
+	return l3->end_off > start ? l3->end_off - start : 0;
+}
+
 /* ------------------------------------------------------------------- UDP */
 
 /*
@@ -62,24 +85,20 @@ static __always_inline __u32 ff_game_port_gate(struct ff_config *cfg,
  * 0xFFFFFFFF. Tiny request, big reply: the cheapest thing to flood a FiveM
  * box with, so they get a budget of their own plus a global ceiling.
  */
-static __always_inline bool ff_is_oob(void *payload, void *data_end)
+FF_SUBPROG __u32 ff_udp(struct xdp_md *ctx, struct ff_config *cfg,
+			struct ff_pkt *pkt, struct ff_l3 *l3, __u64 now)
 {
-	__u32 *magic = payload;
-
-	if ((void *)(magic + 1) > data_end)
-		return false;
-	return *magic == 0xffffffffu;
-}
-
-static __always_inline __u32 ff_udp(struct ff_config *cfg, struct ff_pkt *pkt,
-				    struct ff_l3 *l3, void *data_end, __u64 now)
-{
-	struct udphdr *udp = l3->l4;
+	void *data_end = (void *)(long)ctx->data_end;
 	__u32 checks = FF_CHK_PKT;
-	void *payload;
+	struct udphdr *udp;
+	bool oob = false;
 	__u32 plen, r;
 
-	if ((void *)(udp + 1) > data_end)
+	if (!cfg || !pkt || !l3)
+		return FF_STAT_PASS;
+
+	udp = ff_l4(ctx, l3);
+	if (!udp || (void *)(udp + 1) > data_end)
 		return FF_STAT_DROP_MALFORMED;
 	if (bpf_ntohs(udp->len) < sizeof(*udp))
 		return FF_STAT_DROP_MALFORMED;
@@ -90,6 +109,16 @@ static __always_inline __u32 ff_udp(struct ff_config *cfg, struct ff_pkt *pkt,
 	if (!ff_port_match(cfg, pkt->dport))
 		return FF_STAT_PASS_OTHER;
 
+	/* measured, not claimed: udp->len is whatever the attacker typed */
+	plen = ff_payload_len(l3, sizeof(*udp));
+
+	/* last packet read; see the note in ff_tcp about subprogram calls */
+	if (plen >= 4) {
+		__u32 *magic = (void *)(udp + 1);
+
+		oob = (void *)(magic + 1) <= data_end && *magic == 0xffffffffu;
+	}
+
 	r = ff_game_port_gate(cfg, pkt);
 	if (r != FF_NO_VERDICT)
 		return r;
@@ -97,14 +126,11 @@ static __always_inline __u32 ff_udp(struct ff_config *cfg, struct ff_pkt *pkt,
 	if (pkt->len > cfg->amp_limit && ff_amp_port(pkt->sport))
 		return FF_STAT_DROP_AMP;
 
-	payload = (void *)(udp + 1);
-	/* measured, not claimed: udp->len is whatever the attacker typed */
-	plen = payload <= l3->end ? (__u32)((long)l3->end - (long)payload) : 0;
 	if (plen < cfg->udp_min_len ||
 	    (cfg->udp_max_len && plen > cfg->udp_max_len))
 		return FF_STAT_DROP_UDP_SIZE;
 
-	if (plen >= 4 && ff_is_oob(payload, data_end)) {
+	if (oob) {
 		if (cfg->flags & FF_F_DROP_OOB)
 			return FF_STAT_DROP_OOB;
 		if (!ff_global_allow(cfg, FF_G_OOB, cfg->global_oob_pps, now))
@@ -132,16 +158,22 @@ static __always_inline bool ff_tcp_flags_ok(const struct tcphdr *tcp)
 	return true;
 }
 
-static __always_inline __u32 ff_tcp(struct ff_config *cfg, struct ff_pkt *pkt,
-				    struct ff_l3 *l3, void *data_end, __u64 now)
+FF_SUBPROG __u32 ff_tcp(struct xdp_md *ctx, struct ff_config *cfg,
+			struct ff_pkt *pkt, struct ff_l3 *l3, __u64 now)
 {
-	struct tcphdr *tcp = l3->l4;
+	void *data_end = (void *)(long)ctx->data_end;
 	struct ff_flow_key fk = {};
 	struct ff_flow_val *fv;
+	struct tcphdr *tcp;
 	__u64 idle;
 	__u32 hlen, r;
+	bool syn, ack, fin, rst, flags_ok;
 
-	if ((void *)(tcp + 1) > data_end)
+	if (!cfg || !pkt || !l3)
+		return FF_STAT_PASS;
+
+	tcp = ff_l4(ctx, l3);
+	if (!tcp || (void *)(tcp + 1) > data_end)
 		return FF_STAT_DROP_MALFORMED;
 	if (tcp->doff < 5)
 		return FF_STAT_DROP_MALFORMED;
@@ -155,24 +187,36 @@ static __always_inline __u32 ff_tcp(struct ff_config *cfg, struct ff_pkt *pkt,
 	if (!ff_port_match(cfg, pkt->dport))
 		return FF_STAT_PASS_OTHER;
 
+	/*
+	 * Everything we need from the header gets copied out before the first
+	 * subprogram call. Depending on kernel version the verifier may treat
+	 * packet pointers as stale after a call, and re-proving bounds is
+	 * noisier than just not touching the packet again.
+	 */
+	flags_ok = ff_tcp_flags_ok(tcp);
+	syn = tcp->syn;
+	ack = tcp->ack;
+	fin = tcp->fin;
+	rst = tcp->rst;
+	fk.sport = tcp->source;
+	fk.dport = tcp->dest;
+
 	r = ff_game_port_gate(cfg, pkt);
 	if (r != FF_NO_VERDICT)
 		return r;
 
-	if (!ff_tcp_flags_ok(tcp))
+	if (!flags_ok)
 		return FF_STAT_DROP_TCP_FLAGS;
 
 	__builtin_memcpy(fk.saddr, pkt->src, 16);
 	__builtin_memcpy(fk.daddr, pkt->dst, 16);
-	fk.sport = tcp->source;
-	fk.dport = tcp->dest;
 	fk.af = pkt->af;
 
-	if (tcp->syn && !tcp->ack) {
+	if (syn && !ack) {
 		struct ff_flow_val nfv = { .last_ns = now };
 
-		/* l3->end, not data_end, so runt-frame padding isn't payload */
-		if ((void *)tcp + hlen < l3->end)
+		/* end_off, not data_end, so runt-frame padding isn't payload */
+		if (ff_payload_len(l3, hlen))
 			return FF_STAT_DROP_TCP_SYNDATA;
 		if (!ff_global_allow(cfg, FF_G_SYN, cfg->global_syn_pps, now))
 			return FF_STAT_DROP_GLOBAL_SYN;
@@ -215,10 +259,10 @@ static __always_inline __u32 ff_tcp(struct ff_config *cfg, struct ff_pkt *pkt,
 	if (r != FF_STAT_PASS)
 		return r;
 
-	if (tcp->rst) {
+	if (rst) {
 		bpf_map_delete_elem(&flows, &fk);
 	} else {
-		if (tcp->fin)
+		if (fin)
 			fv->closing = 1;
 		fv->last_ns = now;
 	}
@@ -243,15 +287,21 @@ struct ff_icmphdr {
 	__sum16	checksum;
 };
 
-static __always_inline __u32 ff_icmp(struct ff_config *cfg, struct ff_pkt *pkt,
-				     struct ff_l3 *l3, void *data_end, __u64 now)
+FF_SUBPROG __u32 ff_icmp(struct xdp_md *ctx, struct ff_config *cfg,
+			 struct ff_pkt *pkt, struct ff_l3 *l3, __u64 now)
 {
-	struct ff_icmphdr *icmp = l3->l4;
+	void *data_end = (void *)(long)ctx->data_end;
+	struct ff_icmphdr *icmp;
 	bool echo;
+
+	if (!cfg || !pkt || !l3)
+		return FF_STAT_PASS;
 
 	if (cfg->flags & FF_F_DROP_ICMP)
 		return FF_STAT_DROP_ICMP;
-	if ((void *)(icmp + 1) > data_end)
+
+	icmp = ff_l4(ctx, l3);
+	if (!icmp || (void *)(icmp + 1) > data_end)
 		return FF_STAT_DROP_MALFORMED;
 
 	if (l3->proto == IPPROTO_ICMP)

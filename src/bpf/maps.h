@@ -104,16 +104,36 @@ struct ff_pkt {
 	__u8  af;
 };
 
+/*
+ * Offsets, not pointers. The protocol handlers are global subprograms (see
+ * FF_SUBPROG) and those may only take pointers to structs made of plain
+ * scalars, so packet pointers can't ride along in here. Each handler
+ * re-derives them from ctx with its own bounds checks.
+ */
 struct ff_l3 {
-	void *l4;
-	void *end;		/* end of the datagram per its own length field */
 	__u32 iplen;
 	__u32 frag_id;
+	__u16 l4_off;		/* transport header, from start of frame */
+	__u16 end_off;		/* end of datagram per its own length field,
+				 * clamped to what was actually captured */
 	__u8  proto;
-	bool  frag;
-	bool  frag_first;
-	bool  has_opts;
+	__u8  frag;
+	__u8  frag_first;
+	__u8  has_opts;
 };
+
+/* Furthest a transport header may sit into the frame. Real traffic is under
+ * 100 bytes in; this also gives the verifier a bound on l4_off. */
+#define FF_MAX_L4_OFF 512
+
+/*
+ * Global (non-static, noinline) functions get verified once, on their own,
+ * with unknown arguments - instead of once per call path with every caller's
+ * precise register state. With everything inlined the verifier walked past
+ * its 1M instruction budget; split like this it's a few thousand per piece.
+ * Costs a call per packet and needs 5.12+ for pointer args. Worth it.
+ */
+#define FF_SUBPROG __attribute__((noinline))
 
 /* ------------------------------------------------------------------ maps */
 

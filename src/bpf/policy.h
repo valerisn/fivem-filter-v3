@@ -43,8 +43,12 @@ static __always_inline bool ff_in_scope(const struct ff_config *cfg,
 	       pkt->dst[2] == w[2] && pkt->dst[3] == w[3];
 }
 
-static __always_inline bool ff_is_bogon(const struct ff_pkt *pkt)
+/* Subprogram: the bogon tables are a wall of branches, and inlined into
+ * every caller they were most of what blew the verifier's budget. */
+FF_SUBPROG int ff_is_bogon(const struct ff_pkt *pkt)
 {
+	if (!pkt)
+		return 0;
 	if (pkt->af == FF_AF_INET)
 		return ff_bogon4(bpf_ntohl(pkt->src[0]));
 	return ff_bogon6(bpf_ntohl(pkt->src[0]), bpf_ntohl(pkt->src[1]),

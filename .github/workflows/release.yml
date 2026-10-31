@@ -35,9 +35,10 @@ jobs:
       - name: notes
         run: |
           v="${GITHUB_REF_NAME#v}"
-          awk -v v="$v" '
-            $0 ~ "^## \\[" v "\\]" { on = 1; next }
-            on && /^## \[/ { exit }
+          awk -v h="## [$v]" '
+            index($0, h) == 1 { on = 1; next }
+            on && index($0, "## [") == 1 { exit }
+            on && index($0, "[") == 1 && index($0, "]: ") { next }
             on { print }
           ' CHANGELOG.md > build/notes.md
           [ -s build/notes.md ] || echo "See CHANGELOG.md." > build/notes.md

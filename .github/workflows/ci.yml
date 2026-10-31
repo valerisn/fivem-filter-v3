@@ -32,3 +32,7 @@ jobs:
         run: make bpf
       - name: verifier
         run: sudo make verify
+      - name: packet tests
+        run: |
+          make build/tests/test_xdp
+          sudo build/tests/test_xdp build/filter.bpf.o

@@ -16,7 +16,7 @@ SRV=45.90.12.10
 PEER=45.90.12.20
 BOGON=10.9.9.9
 PORT=30120
-TMP=$(mktemp -d)
+TMP=
 fails=0
 checks=0
 
@@ -25,7 +25,8 @@ cleanup() {
 	ip netns del "$NS" 2>/dev/null || true
 	ip link del ffe0 2>/dev/null || true
 	[[ -n "${EXP_PID:-}" ]] && kill "$EXP_PID" 2>/dev/null || true
-	rm -rf "$TMP"
+	[[ -n "$TMP" ]] && rm -rf "$TMP"
+	return 0
 }
 trap cleanup EXIT
 
@@ -49,7 +50,8 @@ PY
 counter() { "$CTL" stats --json | jq ".counters.$1.packets"; }
 
 echo "== setup"
-cleanup
+cleanup	# leftovers from a previous run that died hard
+TMP=$(mktemp -d)
 ip netns add "$NS"
 ip link add ffe0 type veth peer name ffe1
 ip link set ffe1 netns "$NS"

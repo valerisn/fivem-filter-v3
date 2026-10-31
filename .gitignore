@@ -1,0 +1,7 @@
+build/
+dist/
+*.o
+*.a
+vmlinux.h
+compile_commands.json
+.cache/

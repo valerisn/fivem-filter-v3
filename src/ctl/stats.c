@@ -8,6 +8,7 @@
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 
+#include "bucket.h"
 #include "ctl.h"
 
 void stats_read(struct ff_counter *out)

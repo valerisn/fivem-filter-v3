@@ -205,11 +205,11 @@ int cmd_rule(int argc, char **argv)
 				continue;
 			if (ttl)
 				fmt_duration(ttl, d, sizeof(d));
-			printf("%s %s %s%s%s\n", action == FF_ACT_ALLOW ? "allowed" : "blocked",
-			       buf, ttl ? "for " : "permanently", ttl ? d : "",
-			       was && was != action ? " (replaced an existing " : "");
+			printf("%s %s %s%s", action == FF_ACT_ALLOW ? "allowed" : "blocked",
+			       buf, ttl ? "for " : "permanently", ttl ? d : "");
 			if (was && was != action)
-				printf("  ^ that was an %s rule before\n", act_name(was));
+				printf(" (replaces the %s rule it had)", act_name(was));
+			putchar('\n');
 		}
 	}
 	return failed ? 1 : 0;

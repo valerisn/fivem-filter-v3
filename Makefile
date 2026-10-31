@@ -68,6 +68,10 @@ test-unit: $(UNIT_TESTS)
 $(BUILD)/tests/%: tests/unit/%.c tests/unit/check.h $(SHARED_H) | $(BUILD)/tests
 	$(CC) -O2 -g -Wall -Wextra -Isrc/shared -Itests/unit $< -o $@
 
+# the one unit test that needs real fivemctl code; util.c is libbpf-free
+$(BUILD)/tests/test_parse: tests/unit/test_parse.c src/ctl/util.c src/ctl/ctl.h $(SHARED_H) | $(BUILD)/tests
+	$(CC) -O2 -g -Wall -Wextra -Isrc/shared -Isrc/ctl -Itests/unit $< src/ctl/util.c -o $@
+
 # Runs crafted packets through the real program with BPF_PROG_TEST_RUN.
 # Needs root (or CAP_BPF + CAP_NET_ADMIN) but never touches an interface.
 $(BUILD)/tests/test_xdp: tests/xdp/test_xdp.c tests/xdp/pkt.h $(SHARED_H) | $(BUILD)/tests

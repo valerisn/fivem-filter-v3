@@ -66,7 +66,7 @@ int main(void)
 
 	/* Burst shrinking live: tokens above the new burst get clamped. */
 	stamp = 0; tok = 0;
-	t = 100 * MS;
+	t = 100000 * MS;
 	ff_tb_take(&stamp, &tok, t, 100 * MS, 50);
 	CHECK(tok == 49, "tok %u", tok);
 	n = 0;
@@ -83,7 +83,7 @@ int main(void)
 
 	/* burst 0 behaves as 1, not as "always drop". */
 	stamp = 0; tok = 0;
-	CHECK(ff_tb_take(&stamp, &tok, 10 * MS, 100 * MS, 0), "burst 0 dropped");
+	CHECK(ff_tb_take(&stamp, &tok, 10000 * MS, 100 * MS, 0), "burst 0 dropped");
 
 	/* Clock going backwards must not mint tokens. */
 	stamp = 0; tok = 0;

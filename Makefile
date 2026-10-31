@@ -46,7 +46,7 @@ ctl: $(CTL)
 $(BUILD) $(BUILD)/ctl $(BUILD)/tests:
 	@mkdir -p $@
 
-$(BPF_OBJ): src/bpf/filter.bpf.c $(SHARED_H) | $(BUILD)
+$(BPF_OBJ): src/bpf/filter.bpf.c $(wildcard src/bpf/*.h) $(SHARED_H) | $(BUILD)
 	$(CLANG) $(BPF_CFLAGS) -c $< -o $@
 	@# drop DWARF, keep BTF - the verifier needs BTF for the spin locks
 	@$(LLVM_STRIP) -g $@ 2>/dev/null || true

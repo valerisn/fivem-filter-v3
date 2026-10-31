@@ -1,0 +1,53 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang llvm libbpf-dev libelf-dev zlib1g-dev jq \
+            linux-tools-common linux-tools-$(uname -r)
+      - name: build
+        run: make all CFLAGS="-O2 -g -Werror"
+      - name: test
+        run: |
+          make test-unit
+          sudo make verify
+          make build/tests/test_xdp
+          sudo build/tests/test_xdp build/filter.bpf.o
+          sudo tests/e2e.sh
+      - name: package
+        run: |
+          make dist
+          cd build && sha256sum fivem-filter-*.tar.gz > SHA256SUMS
+      - name: notes
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > build/notes.md
+          [ -s build/notes.md ] || echo "See CHANGELOG.md." > build/notes.md
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" $pre \
+            --title "fivem-filter $GITHUB_REF_NAME" \
+            --notes-file build/notes.md \
+            build/fivem-filter-*.tar.gz build/SHA256SUMS

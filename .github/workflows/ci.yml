@@ -42,3 +42,9 @@ jobs:
         run: |
           sudo apt-get install -y -qq jq
           sudo tests/e2e.sh
+      - name: install and verify units
+        run: |
+          sudo make install
+          systemd-analyze verify /etc/systemd/system/fivem-filter*.service /etc/systemd/system/fivem-filter-reap.timer
+          fivemctl version
+          make dist

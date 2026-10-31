@@ -227,22 +227,39 @@ static __always_inline __u32 ff_tcp(struct ff_config *cfg, struct ff_pkt *pkt,
 
 /* ------------------------------------------------------------------ ICMP */
 
+/*
+ * Not from linux/icmp.h: on current distros that drags in linux/if.h ->
+ * sys/socket.h -> glibc's stubs-32.h, which doesn't exist under -target bpf.
+ * Four constants and a header struct aren't worth the fight.
+ */
+#define FF_ICMP_ECHOREPLY	0
+#define FF_ICMP_ECHO		8
+#define FF_ICMP6_ECHO_REQUEST	128
+#define FF_ICMP6_ECHO_REPLY	129
+
+struct ff_icmphdr {
+	__u8	type;
+	__u8	code;
+	__sum16	checksum;
+};
+
 static __always_inline __u32 ff_icmp(struct ff_config *cfg, struct ff_pkt *pkt,
 				     struct ff_l3 *l3, void *data_end, __u64 now)
 {
-	struct icmphdr *icmp = l3->l4;
+	struct ff_icmphdr *icmp = l3->l4;
 	bool echo;
 
 	if (cfg->flags & FF_F_DROP_ICMP)
 		return FF_STAT_DROP_ICMP;
-	if ((void *)icmp + 4 > data_end)
+	if ((void *)(icmp + 1) > data_end)
 		return FF_STAT_DROP_MALFORMED;
 
 	if (l3->proto == IPPROTO_ICMP)
-		echo = icmp->type == ICMP_ECHO || icmp->type == ICMP_ECHOREPLY;
+		echo = icmp->type == FF_ICMP_ECHO ||
+		       icmp->type == FF_ICMP_ECHOREPLY;
 	else
-		echo = icmp->type == ICMPV6_ECHO_REQUEST ||
-		       icmp->type == ICMPV6_ECHO_REPLY;
+		echo = icmp->type == FF_ICMP6_ECHO_REQUEST ||
+		       icmp->type == FF_ICMP6_ECHO_REPLY;
 
 	if (echo) {
 		if ((cfg->flags & FF_F_BOGON) && ff_is_bogon(pkt))

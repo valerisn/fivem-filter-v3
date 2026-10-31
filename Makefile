@@ -21,7 +21,9 @@ BPF_CFLAGS := -O2 -g -Wall -Werror -target bpf -D__BPF__ -D__TARGET_ARCH_$(ARCH)
               $(EXTRA_BPF_CFLAGS)
 
 CFLAGS  ?= -O2 -g
-CFLAGS  += -Wall -Wextra -Wno-unused-parameter -Wshadow -std=gnu11 \
+# override: distro builds pass CFLAGS=... on the command line, and without
+# this our include paths silently vanish (found out the fun way in CI)
+override CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wshadow -std=gnu11 \
            -Isrc/shared -Isrc/ctl -DFF_VERSION='"$(VERSION)"' \
            -DFF_LIBDIR='"$(LIBDIR)"'
 LDLIBS  := -lbpf -lelf -lz

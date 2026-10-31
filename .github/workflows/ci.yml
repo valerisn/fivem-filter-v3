@@ -30,6 +30,8 @@ jobs:
             linux-tools-common linux-tools-$(uname -r)
       - name: build bpf object
         run: make bpf
+      - name: build fivemctl
+        run: make ctl CFLAGS="-O2 -g -Werror"
       - name: verifier
         run: sudo make verify
       - name: packet tests

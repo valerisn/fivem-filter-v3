@@ -33,7 +33,14 @@ static __always_inline bool ff_in_scope(const struct ff_config *cfg,
 
 	if (!cfg->v6_set)
 		return true;
-	return !__builtin_memcmp(pkt->dst, cfg->v6_addr, 16);
+
+	/* not memcmp: clang is allowed to turn that into a libcall, and BPF
+	 * has no libc to call */
+	__u32 w[4];
+
+	__builtin_memcpy(w, cfg->v6_addr, 16);
+	return pkt->dst[0] == w[0] && pkt->dst[1] == w[1] &&
+	       pkt->dst[2] == w[2] && pkt->dst[3] == w[3];
 }
 
 static __always_inline bool ff_is_bogon(const struct ff_pkt *pkt)
